@@ -14,7 +14,6 @@ import datetime
 import datetime as dt
 import pickle
 import matplotlib.dates as mdates
-import netCDF4
 import textwrap
 
 from mpl_toolkits.basemap import Basemap
@@ -470,7 +469,7 @@ def plotEv_Pacum_hydrograph(MapAcumDf,dfQevs,dfPevs,i,e,vmin=0,vmax=80.0): # cam
 
 
 def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_radextent=False,meanrain_ALL=True,save_bin=False,
-                   path_res=None,umbral=0.005,rutaNC='/media/nicolas/Home/nicolas/101_RadarClass/'):
+                   save_class = False,path_res=None,umbral=0.005,rutaNC='/media/nicolas/Home/nicolas/101_RadarClass/'):
  
     '''
     Read .nc's file forn rutaNC:101Radar_Class within assigned period and frequency.
@@ -569,11 +568,14 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
 
     # acumular dentro de la cuenca.
     cu = wmf.SimuBasin(rute= cuenca)
+    if save_class:
+        cuConv = wmf.SimuBasin(rute= cuenca)
+        cuStra = wmf.SimuBasin(rute= cuenca)
     # paso a hora local
     datesDt = datesDt - dt.timedelta(hours=5)
     datesDt = datesDt.to_pydatetime()
     #Index de salida en hora local
-    rng= pd.date_range(start,end, freq=  textdt+'s')
+    rng= pd.date_range(start.strftime('%Y-%m-%d %H:%M:%S'),end.strftime('%Y-%m-%d %H:%M:%S'), freq=  textdt+'s')
     df = pd.DataFrame(index = rng,columns=codigos)
     
     #accumulated in basin
@@ -587,13 +589,18 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
     if all_radextent:
         radmatrix = np.zeros((1728, 1728))
     
+    print ListRutas
     for dates,pos in zip(datesDt[1:],PosDates):
-            rvec = np.zeros(cu.ncells)        
+            rvec = np.zeros(cu.ncells)   
+            if save_class:
+                rConv = np.zeros(cu.ncells, dtype = int)   
+                rStra = np.zeros(cu.ncells, dtype = int)   
             try:
                     #se lee y agrega lluvia de los nc en el intervalo.
                     for c,p in enumerate(pos):
                             #Lee la imagen de radar para esa fecha
                             g = netCDF4.Dataset(ListRutas[p])
+                            print ListRutas[p]
                             #if all extent
                             if all_radextent:
                                 radmatrix += g.variables['Rain'][:].T/(((len(pos)*3600)/Dt)*1000.0) 
@@ -601,6 +608,16 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
                             RadProp = [g.ncols, g.nrows, g.xll, g.yll, g.dx, g.dx]
                             #Agrega la lluvia en el intervalo 
                             rvec += cu.Transform_Map2Basin(g.variables['Rain'][:].T/(((len(pos)*3600)/Dt)*1000.0),RadProp)
+                            if save_class:
+                                ConvStra = cu.Transform_Map2Basin(g.variables['Conv_Strat'][:].T, RadProp)
+                                # 1-stra, 2-conv
+                                rConv = np.copy(ConvStra) 
+                                rConv[rConv == 1] = 0; rConv[rConv == 2] = 1
+                                rStra = np.copy(ConvStra)
+                                rStra[rStra == 2] = 0 
+                                rvec[(rConv == 0) & (rStra == 0)] = 0
+                                Conv[rvec == 0] = 0
+                                Stra[rvec == 0] = 0
                             #Cierra el netCDF
                             g.close()
             except:
@@ -610,6 +627,9 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
                         rvec = np.zeros(cu.ncells)
                     else:
                         rvec = np.zeros(cu.ncells) 
+                        if save_class:
+                            rConv = np.zeros(cu.ncells)
+                            rStra = np.zeros(cu.ncells)
                     if all_radextent:
                         radmatrix += np.zeros((1728, 1728))
             #acumula dentro del for que recorre las fechas
@@ -634,8 +654,7 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
                         except:
                             mean.append(np.nan)
                 # se actualiza la media de todas las mascaras en el df.
-                df.loc[dates.strftime('%Y-%m-%d %H:%M:%S')]=mean      
-                
+                df.loc[dates.strftime('%Y-%m-%d %H:%M:%S')]=mean             
             else:
                 pass
 
@@ -648,6 +667,27 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
                     fecha = dates,
                     dt = Dt,
                     umbral = umbral)
+                
+                #si guarda nc de ese timestep guarda clasificados
+                if dentro == 0: 
+                    hagalo = True
+                else:
+                    hagalo = False
+                #mira si guarda o no los clasificados
+                if save_class:
+                    #Escribe el binario convectivo
+                    aa = cuConv.rain_radar2basin_from_array(vec = rConv,
+                        ruta_out = path_res+'_conv',
+                        fecha = dates,
+                        dt = Dt,
+                        doit = hagalo)
+                    #Escribe el binario estratiforme
+                    aa = cuStra.rain_radar2basin_from_array(vec = rStra,
+                        ruta_out = path_res+'_stra',
+                        fecha = dates,
+                        dt = Dt,
+                        doit = hagalo)
+                    
                 #guarda en df meanrainfall.
                 try:
                     mean.append(rvec.mean())
@@ -659,6 +699,10 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
         #Cierrra el binario y escribe encabezado
         cu.rain_radar2basin_from_array(status = 'close',ruta_out = path_res)
         print ('.bin & .hdr saved')
+        if args.save_class:
+            cuConv.rain_radar2basin_from_array(status = 'close',ruta_out = path_res+'_conv')
+            cuStra.rain_radar2basin_from_array(status = 'close',ruta_out = path_res+'_stra')
+            print ('.bin & .hdr escenarios saved')
     else:
         print ('.bin & .hdr NOT saved')
 
@@ -849,11 +893,11 @@ def plot_allradarextent(rad2plot,window_t,idlcolors=False,path_figure=None,extra
     #obs.
     if extrapol_axislims:
         #extrapol
-        ax.set_xlim(140,1580)
+        ax.set_xlim(50,1580)
         ax.set_ylim(1580,120)
     else:
         #obs.
-        ax.set_xlim(140,1580)
+        ax.set_xlim(50,1580)
         ax.set_ylim(1585,145)
 
     if path_figure is not None:
@@ -1376,6 +1420,27 @@ def round_time(date = dt.datetime.now(),round_mins=5):
         return dt.datetime(date.year, date.month, date.day, date.hour, date.minute - (date.minute % round_mins))
     else:
         return dt.datetime(date.year, date.month, date.day, date.hour, date.minute - (date.minute % round_mins)) + dt.timedelta(minutes=round_mins)
+    
+def round_time2(date,datepastinformat,tw):
+    '''
+    --------
+    Notes:
+
+    Last space of datinformat might be in same time units than tw.
+    Only works for rounding resolutions between different units (s-h), not between different amounts of same units (1h -3h)
+
+    '''
+
+    date = pd.to_datetime(date)
+    datepastinformat = pd.to_datetime(datepastinformat)
+    nextdate = datepastinformat + pd.Timedelta(tw)
+
+    dif2next = nextdate - date
+    dif2past = date - datepastinformat
+    if dif2next < dif2past:
+        return nextdate
+    else:
+        return datepastinformat
     
 #find max reloaded nico
 # def FindPeaks(Q, Qmin = np.percentile(Q.values[np.isfinite(Q.values)], 90),tw = pd.Timedelta('12h')):
