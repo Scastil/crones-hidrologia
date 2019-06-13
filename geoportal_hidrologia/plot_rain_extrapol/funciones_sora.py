@@ -575,7 +575,7 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
     datesDt = datesDt - dt.timedelta(hours=5)
     datesDt = datesDt.to_pydatetime()
     #Index de salida en hora local
-    rng= pd.date_range(start.strftime('%Y-%m-%d %H:%M:%S'),end.strftime('%Y-%m-%d %H:%M:%S'), freq=  textdt+'s')
+    rng= pd.date_range(start.strftime('%Y-%m-%d %H:%M'),end.strftime('%Y-%m-%d %H:%M'), freq=  textdt+'s')
     df = pd.DataFrame(index = rng,columns=codigos)
     
     #accumulated in basin
