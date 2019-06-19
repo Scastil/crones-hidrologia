@@ -468,8 +468,8 @@ def plotEv_Pacum_hydrograph(MapAcumDf,dfQevs,dfPevs,i,e,vmin=0,vmax=80.0): # cam
 ################################################################RADAR.###############################
 
 
-def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_radextent=False,meanrain_ALL=True,save_bin=False,
-                   save_class = False,path_res=None,umbral=0.005,rutaNC='/media/nicolas/Home/nicolas/101_RadarClass/'):
+def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_radextent=False,meanrain_ALL=True,complete_naninaccum=False,save_bin=False,
+                   save_class = False,path_res=None,umbral=0.005,rutaNC='/media/nicolas/Home/nicolas/101_RadarClass/',verbose=True):
  
     '''
     Read .nc's file forn rutaNC:101Radar_Class within assigned period and frequency.
@@ -499,6 +499,7 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
                   whole radar extent. Change returns: df,radmatrix.
     meanrain_ALL: boolean, defaul True. True for getting the mean radar rainfall within several basins which mask are defined in 'codigos'.
     save_bin:     boolean, default False. True for saving .bin and .hdr files with rainfall and if len('codigos')=1.
+    save_class:  boolean,default False. True for saving .bin and .hdr for convective and stratiform classification. Applies if len('codigos')=1 and save_bin = True.
     path_res:     string with path where to write results if save_bin=True, default None.
     umbral:       float. Minimum umbral for writing rainfall, default = 0.005.
     
@@ -514,7 +515,8 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
     #hora UTC
     startUTC,endUTC = start + pd.Timedelta('5 hours'), end + pd.Timedelta('5 hours')
     fechaI,fechaF,hora_1,hora_2 = startUTC.strftime('%Y-%m-%d'), endUTC.strftime('%Y-%m-%d'),startUTC.strftime('%H:%M'),endUTC.strftime('%H:%M')
-    #Obtiene las fechas por dias
+
+    #Obtiene las fechas por dias para listar archivos por dia
     datesDias = pd.date_range(fechaI, fechaF,freq='D')
 
     a = pd.Series(np.zeros(len(datesDias)),index=datesDias)
@@ -523,25 +525,30 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
 
     datesDias = [d.strftime('%Y%m%d') for d in datesDias.to_pydatetime()]
 
-    ListDays = []
+    #lista los .nc existentes de ese dia: rutas y fechas del nombre del archivo
+    ListDatesinNC = []
     ListRutas = []
     for d in datesDias:
         try:
             L = glob.glob(rutaNC + d + '*.nc')
             ListRutas.extend(L)
-            for i in L:
+            for i in L: # incluye fechas de extrapol en caso de que fechaF inluya fechas del futuro.
                 if i[-11:].endswith('extrapol.nc'):
-                    ListDays.append(i[-32:-20])
+                    ListDatesinNC.append(i.split('/')[-1].split('_')[0])
                 else:
-                    ListDays.append(i[-23:-11])
+                    ListDatesinNC.append(i.split('/')[-1].split('_')[0])
         except:
             print ('mierda')
-    #Organiza las listas de dias y de rutas
-    ListDays.sort()
+
+    # Organiza las listas de dias y de rutas
+    ListDatesinNC.sort()
     ListRutas.sort()
-    datesDias = [dt.datetime.strptime(d[:12],'%Y%m%d%H%M') for d in ListDays]
-    datesDias = pd.to_datetime(datesDias)
-    #Obtiene las fechas por Dt
+    #index con las fechas especificas de los .nc existentes de radar
+    datesinNC = [dt.datetime.strptime(d,'%Y%m%d%H%M') for d in ListDatesinNC]
+    datesinNC = pd.to_datetime(datesinNC)
+
+
+    #Obtiene el index con la resolucion deseada, en que se quiere buscar datos existentes de radar, 
     textdt = '%d' % Dt
     #Agrega hora a la fecha inicial
     if hora_1 != None:
@@ -555,15 +562,18 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
             final = fechaF
     datesDt = pd.date_range(inicio,final,freq = textdt+'s')
 
-    #Obtiene las posiciones de acuerdo al dt para cada fecha
+    #Obtiene las posiciones de acuerdo al dt para cada fecha, si no hay barrido en ese paso de tiempo se acumula 
+    #elbarrido inmediatamente anterior.
     PosDates = []
     pos1 = [0]
     for d1,d2 in zip(datesDt[:-1],datesDt[1:]):
-            pos2 = np.where((datesDias<d2) & (datesDias>=d1))[0].tolist()
-            if len(pos2) == 0:
+            pos2 = np.where((datesinNC<d2) & (datesinNC>=d1))[0].tolist()
+            if len(pos2) == 0 and complete_naninaccum == True:
                     pos2 = pos1
-            else:
+            elif complete_naninaccum == True:
                     pos1 = pos2
+            elif len(pos2) == 0:
+                    pos2=[]
             PosDates.append(pos2)
 
     # acumular dentro de la cuenca.
@@ -577,19 +587,19 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
     #Index de salida en hora local
     rng= pd.date_range(start.strftime('%Y-%m-%d %H:%M'),end.strftime('%Y-%m-%d %H:%M'), freq=  textdt+'s')
     df = pd.DataFrame(index = rng,columns=codigos)
-    
+
     #accumulated in basin
     if accum:
         rvec_accum = np.zeros(cu.ncells)
         rvec = np.zeros(cu.ncells)
     else:
         pass
-    
+
     #all extent
     if all_radextent:
         radmatrix = np.zeros((1728, 1728))
-    
-    print ListRutas
+
+    # print ListRutas
     for dates,pos in zip(datesDt[1:],PosDates):
             rvec = np.zeros(cu.ncells)   
             if save_class:
@@ -598,9 +608,11 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
             try:
                     #se lee y agrega lluvia de los nc en el intervalo.
                     for c,p in enumerate(pos):
+                            #lista archivo leido
+                            if verbose:
+                                print ListRutas[p]
                             #Lee la imagen de radar para esa fecha
                             g = netCDF4.Dataset(ListRutas[p])
-                            print ListRutas[p]
                             #if all extent
                             if all_radextent:
                                 radmatrix += g.variables['Rain'][:].T/(((len(pos)*3600)/Dt)*1000.0) 
@@ -649,10 +661,13 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
                     else:
                         mask_vect = None
                     if mask_vect is not None:
-                        try:
-                            mean.append(np.sum(mask_vect*rvec)/np.sum(mask_vect))
-                        except:
+                        if len(pos) == 0: # si no hay nc en ese paso de tiempo.
                             mean.append(np.nan)
+                        else:
+                            try:
+                                mean.append(np.sum(mask_vect*rvec)/np.sum(mask_vect))
+                            except: # para las que no hay mascara.
+                                mean.append(np.nan)
                 # se actualiza la media de todas las mascaras en el df.
                 df.loc[dates.strftime('%Y-%m-%d %H:%M:%S')]=mean             
             else:
@@ -667,7 +682,7 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
                     fecha = dates,
                     dt = Dt,
                     umbral = umbral)
-                
+
                 #si guarda nc de ese timestep guarda clasificados
                 if dentro == 0: 
                     hagalo = True
@@ -687,14 +702,14 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
                         fecha = dates,
                         dt = Dt,
                         doit = hagalo)
-                    
+
                 #guarda en df meanrainfall.
                 try:
                     mean.append(rvec.mean())
                 except:
                     mean.append(np.nan)
                 df.loc[dates.strftime('%Y-%m-%d %H:%M:%S')]=mean
-                           
+
     if save_bin == True and len(codigos)==1 and path_res is not None:
         #Cierrra el binario y escribe encabezado
         cu.rain_radar2basin_from_array(status = 'close',ruta_out = path_res)
@@ -706,6 +721,7 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
     else:
         print ('.bin & .hdr NOT saved')
 
+
     #elige los retornos.
     if accum == True and path_tif is not None:
         cu.Transform_Basin2Map(rvec_accum,path_tif)
@@ -716,6 +732,70 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
         return df,radmatrix
     else:
         return df    
+    
+def acum_radarbasin(path_radar,cu, start=None,end=None, pos_point_hietogram=None,read_class=False):
+    '''
+    -----------
+    Parameters:
+    
+     - pos_point_hietogram = Optional, default None. Dataframe with shape = (# pos_points,1)
+    -----------
+    Return:
+    '''
+    ruta_bin = path_radar+'.bin'
+    ruta_hdr = path_radar+'.hdr'
+
+    DictRain = wmf.read_rain_struct(ruta_hdr)
+    R = DictRain[u' Record']
+    Vsum = np.zeros(cu.ncells)
+    
+    if start is not None:
+        pos = R[start:end].values
+    else:
+        pos = R.values
+    #pos dentro de la serie de tiempo
+    if pos_point_hietogram is not None:
+        point_hietograms = np.zeros((pos.size,pos_point_hietogram.shape[0]))
+        if read_class:
+            ruta_binconv,ruta_hdrconv = path_radar+'_conv.bin',path_radar+'_conv.hdr'
+            ruta_binstra,ruta_hdrstra = path_radar+'_stra.bin',path_radar+'_stra.hdr'  
+            point_hietograms_conv = np.zeros((pos.size,pos_point_hietogram.shape[0]))
+            point_hietograms_stra = np.zeros((pos.size,pos_point_hietogram.shape[0]))
+    else:
+        pos = pos[pos !=1]
+    #acumulado
+    for ind,p in zip(np.arange(pos.size),pos):
+        #se acumula la lluvia de la cuenca
+        v,r = wmf.models.read_int_basin(ruta_bin,p,cu.ncells)
+        #correcciones de rutina al valor
+        v = v.astype(float); v = v/1000.0 #;v[poshalo]=np.nan
+        Vsum+=v
+        # si se define saca hietograma en pixeles definidos
+        if pos_point_hietogram is not None:
+            point_hietograms[ind] = v[np.concatenate(pos_point_hietogram.values)]
+            if read_class:
+                vconv,r = wmf.models.read_int_basin(ruta_binconv,p,cu.ncells)
+                vconv = vconv.astype(float);vconv = vconv/1000.0
+                vstra,r = wmf.models.read_int_basin(ruta_binstra,p,cu.ncells)
+                vstra = vstra.astype(float);vstra = vstra/1000.0
+                point_hietograms_conv[ind] = vconv[np.concatenate(pos_point_hietogram.values)] 
+                point_hietograms_stra[ind] = vstra[np.concatenate(pos_point_hietogram.values)] 
+    if pos_point_hietogram is not None and read_class == True:
+        df = pd.DataFrame([point_hietograms.T[0],point_hietograms.T[1],
+        point_hietograms_conv.T[0],point_hietograms_conv.T[1],
+        point_hietograms_stra.T[0],point_hietograms_stra.T[1]]).T
+        cols = list(map(str,pos_point_hietogram.index))
+        cols_conv = list(map(lambda x : x+'_conv',cols))
+        cols_stra = list(map(lambda x : x+'_stra',cols))
+        columns = np.concatenate([cols,cols_conv,cols_stra])
+        df.columns = np.concatenate([cols,cols_conv,cols_stra])
+        df.index  = R[start:end].index
+        return Vsum,df
+    elif pos_point_hietogram is not None:
+        return Vsum,pd.DataFrame(point_hietograms,index=R.index[pos],columns=list(map(str,pos_point_hietogram.index)))
+    else:
+        return Vsum
+
 
 ############################### plot radar - FROM CPR
 def radar_cmap(window_t,idlcolors=False):
