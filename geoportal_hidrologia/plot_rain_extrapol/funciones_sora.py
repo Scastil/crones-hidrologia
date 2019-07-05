@@ -714,7 +714,7 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
         #Cierrra el binario y escribe encabezado
         cu.rain_radar2basin_from_array(status = 'close',ruta_out = path_res)
         print ('.bin & .hdr saved')
-        if args.save_class:
+        if save_class:
             cuConv.rain_radar2basin_from_array(status = 'close',ruta_out = path_res+'_conv')
             cuStra.rain_radar2basin_from_array(status = 'close',ruta_out = path_res+'_stra')
             print ('.bin & .hdr escenarios saved')
