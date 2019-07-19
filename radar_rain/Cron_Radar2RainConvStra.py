@@ -69,7 +69,7 @@ for root, dirs,files in os.walk(ruta):
 # si no hay ningun archivo modificado en los ultimos 'ago' minutos manda un correo a Soraya
 if len(times)==0:
     to='scgiraldo11@gmail.com'
-    Asunto='SC_CamposRadar no se ha ejecutado'
+    Asunto='SC_CamposRadar12 no se ha ejecutado'
     Mensaje='No se han generado archivos .nc de radar en Amazonas (192.168.1.12): '+ruta+' en los ultimos 20 min.'
     gmail_user = 'scgiraldo11@gmail.com'
     gmail_pwd = '12345s.oraya'
@@ -88,9 +88,9 @@ else:
 ############
 ####PRC#####
 ############
-    f = open('/home/nicolas/self_code/Crones/SC_CamposRadar.prc','w') #opens file with name of "test.txt"
+    f = open('/home/nicolas/self_code/Crones/SC_CamposRadar12.prc','w') #opens file with name of "test.txt"
     #linea 1: nombre prc
-    f.write('SC_CamposRadar\n')
+    f.write('SC_CamposRadar12\n')
     #linea 2: descripcion
     f.write('Generacion de archivos .nc de radar en Amazonas (192.168.1.12): en /media/nicolas/Home/nicolas/101_RadarClass/\n')
     #linea 3: cada cuanto se corre el proceso
@@ -116,7 +116,7 @@ else:
     f.close()
     # Se copia el .prc en la ruta donde debe estar en el servidor
     #Para que esto funcione se debe hacer ssh-copy-id desde el usuario e ip donde se envia hacia el usuario  e ip donde se recibe para que el login quede automatico
-    os.system('scp /home/nicolas/self_code/Crones/SC_CamposRadar.prc socastillogi@192.168.1.74:/home/torresiata/SIVP/archivosPRC/')
+    os.system('scp /home/nicolas/self_code/Crones/SC_CamposRadar12.prc socastillogi@192.168.1.74:/home/torresiata/SIVP/archivosPRC/')
 
 print (dt.datetime.now())
 
