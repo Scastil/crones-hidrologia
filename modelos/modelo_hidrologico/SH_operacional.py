@@ -374,18 +374,18 @@ def check_rain_files(start,end,code,rain_path):#code, rain_path +
     return file
 
 def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_radextent=False,meanrain_ALL=True,complete_naninaccum=False,save_bin=False,
-                   save_class = False,path_res=None,umbral=0.005,rutaNC='/media/nicolas/Home/nicolas/101_RadarClass/',verbose=True):
- 
+               save_class = False,path_res=None,umbral=0.005,rutaNC='/media/nicolas/Home/nicolas/101_RadarClass/',verbose=True):
+
     '''
     Read .nc's file forn rutaNC:101Radar_Class within assigned period and frequency.
-    
+
     0. It divides by 1000.0 and converts from mm/5min to mm/h.
     1. Get mean radar rainfall in basins assigned in 'codigos' for finding masks, if the mask exist.
     2. Write binary files if is setted.
     - Cannot do both 1 and 2.
     - To saving binary files (2) set: meanrain_ALL=False, save_bin=True, path_res= path where to write results, 
       len('codigos')=1, nc_path aims to the one with dxp and simubasin props setted.
-    
+
     Parameters
     ----------
     start:        string, date&time format %Y-%m%-d %H:%M, local time.
@@ -394,7 +394,7 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
     cuenca:       string, simubasin .nc path with dxp and format from WMF. It should be 260 path if whole catchment analysis is needed, or any other .nc path for saving the binary file.
     codigos:       list, with codes of stage stations. Needed for finding the mask associated to a basin.
     rutaNC:       string, path with .nc files from radar meteorology group. Default in amazonas: 101Radar_Class
-    
+
     Optional Parameters
     ----------
     accum:        boolean, default False. True for getting the accumulated matrix between start and end.
@@ -407,15 +407,16 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
     save_class:  boolean,default False. True for saving .bin and .hdr for convective and stratiform classification. Applies if len('codigos')=1 and save_bin = True.
     path_res:     string with path where to write results if save_bin=True, default None.
     umbral:       float. Minimum umbral for writing rainfall, default = 0.005.
-    
+
     Returns
     ----------
     - df whith meanrainfall of assiged codes in 'codigos'.
     - df,rvec if accum = True.
     - df,radmatrix if all_radextent = True.
     - save .bin and .hdr if save_bin = True, len('codigos')=1 and path_res=path.
-    
+
     '''
+
     start,end = pd.to_datetime(start),pd.to_datetime(end)
     #hora UTC
     startUTC,endUTC = start + pd.Timedelta('5 hours'), end + pd.Timedelta('5 hours')
@@ -497,6 +498,7 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
     if accum:
         rvec_accum = np.zeros(cu.ncells)
         rvec = np.zeros(cu.ncells)
+        dfaccum = pd.DataFrame(np.zeros((cu.ncells,rng.size)).T,index = rng)
     else:
         pass
 
@@ -552,6 +554,7 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
             #acumula dentro del for que recorre las fechas
             if accum:
                 rvec_accum += rvec
+                dfaccum.loc[dates.strftime('%Y-%m-%d %H:%M:%S')]= rvec
             else:
                 pass
             # si se quiere sacar promedios de lluvia de radar en varias cuencas definidas en 'codigos'
@@ -626,17 +629,16 @@ def get_radar_rain(start,end,Dt,cuenca,codigos,accum=False,path_tif=None,all_rad
     else:
         print ('.bin & .hdr NOT saved')
 
-
-    #elige los retornos.
-    if accum == True and path_tif is not None:
-        cu.Transform_Basin2Map(rvec_accum,path_tif)
-        return df,rvec_accum
-    elif accum == True:
-        return df,rvec_accum
-    elif all_radextent:
-        return df,radmatrix
-    else:
-        return df    
+        #elige los retornos.
+        if accum == True and path_tif is not None:
+            cu.Transform_Basin2Map(rvec_accum,path_tif)
+            return df,rvec_accum,dfaccum
+        elif accum == True:
+            return df,rvec_accum,dfaccum
+        elif all_radextent:
+            return df,radmatrix
+        else:
+            return df 
 
 def radar_rain(start,end,rain_path,codefile,rainfile_name,nc_basin,ncells,Dt=300.0,ext='.hdr'):
     '''
